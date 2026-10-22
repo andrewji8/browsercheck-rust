@@ -1,0 +1,21 @@
+[package]
+name = "browsercheck-rust"
+version = "1.0.0"
+edition = "2021"
+description = "All-in-one browser & network environment self-check tool — Rust/axum rewrite of andrewji8/browsercheck"
+license = "MIT"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "http2"] }
+serde = "1"
+serde_json = "1"
+chrono = "0.4"
+trust-dns-resolver = "0.23"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = true
+strip = true

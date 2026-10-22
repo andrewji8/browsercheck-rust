@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BrowserCheck — 浏览器与网络环境自检工具</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d28;
+    --border: #2a2d3a;
+    --text: #e1e4ed;
+    --muted: #8b8fa3;
+    --accent: #6c8cff;
+    --danger: #ff5c5c;
+    --warn: #ffb84d;
+    --pass: #4ade80;
+    --info: #60a5fa;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px;
+    line-height: 1.6;
+  }
+  .container { max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 2em; margin-bottom: 4px; display: flex; align-items: center; gap: 12px; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; }
+  .toolbar { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    padding: 10px 24px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--card); color: var(--text); cursor: pointer;
+    font-size: 14px; transition: all .2s;
+  }
+  .btn:hover { background: #262a3a; border-color: var(--accent); }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn.primary:hover { opacity: .85; }
+  .status-badge {
+    display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 600;
+  }
+  .badge-pass { background: rgba(74,222,128,.15); color: var(--pass); }
+  .badge-warn { background: rgba(255,184,77,.15); color: var(--warn); }
+  .badge-fail { background: rgba(255,92,92,.15); color: var(--danger); }
+  .badge-info { background: rgba(96,165,250,.15); color: var(--info); }
+
+  .overall-score {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 16px; border-radius: 20px; font-size: 14px; font-weight: 700;
+  }
+  .score-clean { background: rgba(74,222,128,.15); color: var(--pass); }
+  .score-attention { background: rgba(255,184,77,.15); color: var(--warn); }
+  .score-suspicious { background: rgba(255,92,92,.15); color: var(--danger); }
+  .score-risky { background: rgba(255,92,92,.25); color: #ff4444; }
+
+  .dimension-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px,1fr)); gap: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; transition: border-color .2s;
+  }
+  .card:hover { border-color: #3a3d4a; }
+  .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .card-title { font-size: 15px; font-weight: 700; }
+  .card-body { font-size: 13px; }
+  .card-body table { width: 100%; border-collapse: collapse; }
+  .card-body td { padding: 4px 0; vertical-align: top; }
+  .card-body td:first-child { color: var(--muted); width: 120px; min-width: 120px; padding-right: 8px; }
+  .card-body .value { color: var(--text); word-break: break-all; }
+  .card-body .value.ip { font-family: "Consolas","Courier New",monospace; font-size: 12px; }
+
+  .findings { margin-top: 16px; }
+  .finding { padding: 6px 12px; margin-bottom: 4px; border-radius: 6px; font-size: 13px; }
+  .finding-warn { background: rgba(255,184,77,.1); border-left: 3px solid var(--warn); }
+  .finding-fail { background: rgba(255,92,92,.1); border-left: 3px solid var(--danger); }
+
+  .rules-section { margin-top: 24px; }
+  .rules-section h2 { font-size: 18px; margin-bottom: 12px; }
+  .rule-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .rule-id { font-weight: 700; min-width: 40px; color: var(--accent); }
+  .rule-detail { flex: 1; }
+  .rule-detail .status { margin-left: 8px; }
+
+  .progress-bar {
+    width: 100%; height: 3px; background: var(--border); border-radius: 2px;
+    margin: 16px 0; overflow: hidden; display: none;
+  }
+  .progress-bar.active { display: block; }
+  .progress-fill {
+    height: 100%; background: var(--accent); border-radius: 2px;
+    transition: width .3s; width: 0%;
+  }
+
+  .loading { display: none; color: var(--muted); font-size: 13px; }
+  .loading.active { display: inline; }
+
+  @media (max-width: 700px) {
+    .dimension-grid { grid-template-columns: 1fr; }
+  }
+
+  /* Tab-like dimension nav */
+  .dimension-nav {
+    display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 20px;
+  }
+  .dimension-nav a {
+    padding: 6px 14px; border-radius: 20px; font-size: 12px;
+    text-decoration: none; color: var(--muted); background: var(--card);
+    border: 1px solid var(--border); transition: all .2s;
+  }
+  .dimension-nav a:hover { border-color: var(--accent); color: var(--text); }
+  .dimension-nav a.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="container">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div>
+      <h1>
+        <span>🔍</span> BrowserCheck
+        <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:8px;" id="badgeEngine"></span>
+      </h1>
+      <div class="subtitle">一站式浏览器与网络环境自检 · 12维度 / 近100项指标 / 19条交叉校验</div>
+    </div>
+    <div id="overallBadge"></div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn primary" onclick="runAll()">▶ 全面检测</button>
+    <button class="btn" onclick="runAll()">🔄 重新检测</button>
+    <span class="loading" id="loadingIndicator">检测中…</span>
+  </div>
+  <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+
+  <div class="dimension-nav" id="dimensionNav">
+    <a href="#dim-egress" class="active">网络出口</a>
+    <a href="#dim-webrtc">WebRTC</a>
+    <a href="#dim-dns">DNS</a>
+    <a href="#dim-multigeo">多出口GeoIP</a>
+    <a href="#dim-headers">请求头</a>
+    <a href="#dim-engine">引擎探针</a>
+    <a href="#dim-identity">身份/时区/语言</a>
+    <a href="#dim-fonts">字体/TTS</a>
+    <a href="#dim-canvas">Canvas</a>
+    <a href="#dim-audio">Audio</a>
+    <a href="#dim-webgl">WebGL/WebGPU</a>
+    <a href="#dim-hardware">硬件/API</a>
+    <a href="#dim-privacy">隐私模式</a>
+    <a href="#dim-validation">⚡ 交叉校验</a>
+  </div>
+
+  <div class="dimension-grid" id="dimensionGrid">
+    <!-- Cards are populated by JS -->
+  </div>
+
+  <div class="rules-section" id="rulesSection" style="display:none;">
+    <h2>🧪 19 条交叉校验规则</h2>
+    <div id="rulesContainer"></div>
+    <div id="findingsContainer" class="findings"></div>
+  </div>
+</div>
+
+<script>
+// ── Dimension definitions ──────────────────────────────────────────
+
+const DIMENSIONS = [
+  {
+    id: "dim-egress",
+    title: "🌐 网络出口",
+    desc: "IPv4/IPv6双栈 · ASN · IDC机房 · 代理/VPN · Tor出口 · 风控值",
+    fields: ["ipv4","ipv6","asn_ipv4","org_ipv4","is_proxy","is_vpn","is_tor_exit","is_datacenter","is_native_ip","risk_score","risk_reasons","tor_exit_nodes"],
+    render: (d) => `
+      <table>
+        <tr><td>IPv4</td><td class="value ip">${d.ipv4||'<span class="badge badge-warn">未检测到</span>'}</td></tr>
+        <tr><td>IPv6</td><td class="value ip">${d.ipv6||'<span class="badge badge-info">未检测到</span>'}</td></tr>
+        <tr><td>ASN</td><td class="value">${d.asn_ipv4||'—'} ${d.org_ipv4?'('+d.org_ipv4+')':''}</td></tr>
+        <tr><td>机房IP</td><td>${badgeBool(d.is_datacenter,'warn','pass')}</td></tr>
+        <tr><td>代理/VPN</td><td>${badgeBool(d.is_proxy,'fail','pass')} ${d.vpn_sources.length?'('+d.vpn_sources.join(', ')+')':''}</td></tr>
+        <tr><td>Tor出口</td><td>${badgeBool(d.is_tor_exit,'fail','pass')}</td></tr>
+        <tr><td>原生IP</td><td>${badgeBool(d.is_native_ip,'pass','warn')}</td></tr>
+        <tr><td>风控分</td><td><span style="color:${d.risk_score>30?'var(--danger)':d.risk_score>10?'var(--warn)':'var(--pass)'};font-weight:700;">${d.risk_score}/100</span></td></tr>
+      </table>
+      ${d.risk_reasons?.length ? `<div style="margin-top:8px;font-size:12px;color:var(--danger);">⚠ ${d.risk_reasons.join('; ')}</div>` : ''}
+    `,
+    fetch: () => api("/api/ip"),
+  },
+  {
+    id: "dim-webrtc",
+    title: "📡 WebRTC 检测",
+    desc: "公网/本地/mDNS 主机名暴露",
+    fields: ["observed_ipv4","observed_ipv6","local_ips","mdns_hostname"],
+    render: (d) => {
+      let webrtcHtml = `<table>`;
+      // Client-side WebRTC probe results
+      if (window.__webrtcResults) {
+        const wr = window.__webrtcResults;
+        webrtcHtml += `<tr><td>HTTP IPv4</td><td class="value ip">${d.observed_ipv4||'—'}</td></tr>`;
+        webrtcHtml += `<tr><td>WebRTC IPv4</td><td class="value ip">${wr.ipv4||'未暴露'} ${wr.ipv4 && d.observed_ipv4 && wr.ipv4!==d.observed_ipv4 ? '<span class="badge badge-fail">泄漏!</span>' : ''}</td></tr>`;
+        webrtcHtml += `<tr><td>本地地址</td><td class="value">${wr.local_ips?.join(', ')||'无'}</td></tr>`;
+        webrtcHtml += `<tr><td>mDNS主机名</td><td class="value">${wr.mdns||'无'}</td></tr>`;
+        webrtcHtml += `<tr><td>WebRTC泄漏</td><td>${badgeBool(wr.leak,'fail','pass')}</td></tr>`;
+      } else {
+        webrtcHtml += `<tr><td>HTTP IPv4</td><td class="value ip">${d.observed_ipv4||'—'}</td></tr>`;
+        webrtcHtml += `<tr><td colspan="2"><span class="badge badge-info">WebRTC探针将在点击"全面检测"后运行</span></td></tr>`;
+      }
+      webrtcHtml += `</table>`;
+      return webrtcHtml;
+    },
+    fetch: () => api("/api/webrtc"),
+  },
+  {
+    id: "dim-dns",
+    title: "📡 DNS 解析器",
+    desc: "生效DNS服务器 · 所在国家 · 泄漏检测",
+    fields: ["resolvers","dnsleak_ip","dnsleak_analysis"],
+    render: (d) => `
+      <table>
+        <tr><td>DNS服务器</td><td class="value">${d.resolvers?.map(r => r.ip+(r.country?' ('+r.country+')':'')).join(', ')||'—'}</td></tr>
+        <tr><td>私有DNS</td><td>${badgeBool(d.dnsleak_analysis?.private_dns,'warn','pass')}</td></tr>
+        <tr><td>DNS泄漏</td><td>${badgeBool(d.dnsleak_analysis?.leak_detected,'fail','pass')}</td></tr>
+        ${d.dnsleak_ip ? `<tr><td>泄漏暴露IP</td><td class="value ip">${d.dnsleak_ip}</td></tr>` : ''}
+      </table>
+    `,
+    fetch: () => api("/api/dns"),
+  },
+  {
+    id: "dim-multigeo",
+    title: "🌍 多出口 GeoIP",
+    desc: "并发请求多家第三方端点比对",
+    fields: ["results","split_tunnel_detected","consistent_country"],
+    render: (d) => {
+      let html = `<table>`;
+      if (d.split_tunnel_detected) {
+        html += `<tr><td>Split-tunnel</td><td><span class="badge badge-fail">检测到分线</span></td></tr>`;
+      }
+      if (d.consistent_country) {
+        html += `<tr><td>一致国家</td><td class="value">${d.consistent_country} ${badgeBool(!d.split_tunnel_detected,'pass','fail')}</td></tr>`;
+      }
+      html += `<tr><td colspan="2"><div style="font-size:12px;color:var(--muted);margin-top:4px;">`;
+      d.results?.forEach(r => {
+        html += `<div>• ${r.source}: ${r.country||r.error||'—'} ${r.city?'('+r.city+')':''}</div>`;
+      });
+      html += `</div></td></tr></table>`;
+      return html;
+    },
+    fetch: () => api("/api/multi-geo"),
+  },
+  {
+    id: "dim-headers",
+    title: "📋 HTTP 请求头",
+    desc: "UA · Sec-CH-UA · Accept-Language · Via · X-Forwarded-For",
+    fields: ["user_agent","accept_language","sec_ch_headers"],
+    render: (d) => {
+      let html = `<table>`;
+      html += `<tr><td>User-Agent</td><td class="value" style="font-size:11px;word-break:break-word;">${escHtml(d.user_agent||'')}</td></tr>`;
+      html += `<tr><td>Accept-Lang</td><td class="value">${d.accept_language||'—'}</td></tr>`;
+      html += `<tr><td>X-Forwarded-For</td><td class="value">${d.x_forwarded_for||'<span class="badge badge-pass">无</span>'}</td></tr>`;
+      html += `<tr><td>Via</td><td class="value">${d.via||'<span class="badge badge-pass">无</span>'}</td></tr>`;
+      if (d.sec_ch_headers && Object.keys(d.sec_ch_headers).length) {
+        html += `<tr><td>Sec-CH-UA</td><td class="value" style="font-size:11px;">${escHtml(JSON.stringify(d.sec_ch_headers))}</td></tr>`;
+      }
+      html += `</table>`;
+      return html;
+    },
+    fetch: () => api("/api/headers"),
+  },
+  {
+    id: "dim-engine",
+    title: "🔧 引擎探针",
+    desc: "基于1247项引擎特征推断真实内核版本",
+    fields: ["hints","raw_ua"],
+    render: (d) => {
+      let html = `<table>`;
+      const h = d.hints||{};
+      html += `<tr><td>UA推断引擎</td><td class="value">${h.engine||'未知'} ${h.engine_version_hint?'v'+h.engine_version_hint:''}</td></tr>`;
+      html += `<tr><td>UA推断浏览器</td><td class="value">${h.browser||'未知'}</td></tr>`;
+      html += `<tr><td>UA推断OS</td><td class="value">${h.os||'未知'}</td></tr>`;
+      if (window.__engineProbeResults) {
+        const pr = window.__engineProbeResults;
+        html += `<tr><td>实际引擎</td><td class="value">${pr.engine||'—'}</td></tr>`;
+        if (pr.engineFeatures) {
+          html += `<tr><td>特征匹配</td><td class="value">✅ 已匹配 ${pr.engineFeatures} 项特征</td></tr>`;
+        }
+        const match = pr.engine && h.engine && (pr.engine.toLowerCase().includes(h.engine.toLowerCase()) || h.engine.toLowerCase().includes(pr.engine.toLowerCase()));
+        html += `<tr><td>一致性</td><td>${badgeBool(match,'pass','fail')}</td></tr>`;
+      }
+      html += `</table>`;
+      return html;
+    },
+    fetch: () => api("/api/engine-probe"),
+  },
+  {
+    id: "dim-identity",
+    title: "🧑 身份/时区/语言",
+    desc: "navigator.platform · 时区 · 语言包 · 区域",
+    fields: ["platform","timezone","language","languages"],
+    render: (d) => `
+      <table>
+        <tr><td>平台</td><td class="value">${d.platform||'—'}</td></tr>
+        <tr><td>时区</td><td class="value">${d.timezone||'—'}</td></tr>
+        <tr><td>首选语言</td><td class="value">${d.language||'—'}</td></tr>
+        <tr><td>所有语言</td><td class="value">${(d.languages||[]).join(', ')||'—'}</td></tr>
+        <tr><td>Cookie启用</td><td>${badgeBool(d.cookieEnabled,'pass','fail')}</td></tr>
+      </table>
+    `,
+    clientData: true,
+  },
+  {
+    id: "dim-fonts",
+    title: "🔤 字体 & TTS 语音",
+    desc: "系统字体列表 · 区域字体提示 · TTS语音包",
+    fields: ["fonts","fontCount","voices","voiceCount"],
+    render: (d) => `
+      <table>
+        <tr><td>系统字体数</td><td class="value">${d.fontCount||0}</td></tr>
+        <tr><td>字体区域</td><td class="value">${d.fontRegions||'—'}</td></tr>
+        ${d.fonts ? `<tr><td>字体(前10)</td><td class="value" style="font-size:11px;">${d.fonts.slice(0,10).join(', ')}${d.fonts.length>10?', …':''}</td></tr>` : ''}
+        <tr><td>TTS语音数</td><td class="value">${d.voiceCount||0}</td></tr>
+        ${d.voices ? `<tr><td>语音(前5)</td><td class="value" style="font-size:11px;">${d.voices.slice(0,5).join(', ')}</td></tr>` : ''}
+      </table>
+    `,
+    clientData: true,
+  },
+  {
+    id: "dim-canvas",
+    title: "🎨 Canvas 指纹",
+    desc: "5种Canvas绘制 · 稳定性 · 哈希值",
+    fields: ["canvas_results","canvas_stable"],
+    render: (d) => {
+      let html = `<table>`;
+      if (d.canvas_results && d.canvas_results.length) {
+        const stable = d.canvas_results.filter(c => c.stable).length;
+        const total = d.canvas_results.length;
+        html += `<tr><td>稳定性</td><td>${badgeBool(stable===total,'pass','warn')} ${stable}/${total}</td></tr>`;
+        d.canvas_results.forEach((c,i) => {
+          html += `<tr><td>Canvas #${i+1}</td><td class="value" style="font-size:10px;">${c.hash||'—'} ${badgeBool(c.stable,'pass','warn')}</td></tr>`;
+        });
+      } else {
+        html += `<tr><td colspan="2"><span class="badge badge-info">等待检测</span></td></tr>`;
+      }
+      html += `</table>`;
+      return html;
+    },
+    clientData: true,
+  },
+  {
+    id: "dim-audio",
+    title: "🎵 Audio 指纹",
+    desc: "3种AudioContext · 稳定性 · 哈希值",
+    fields: ["audio_results","audio_stable"],
+    render: (d) => {
+      let html = `<table>`;
+      if (d.audio_results && d.audio_results.length) {
+        const stable = d.audio_results.filter(a => a.stable).length;
+        const total = d.audio_results.length;
+        html += `<tr><td>稳定性</td><td>${badgeBool(stable===total,'pass','warn')} ${stable}/${total}</td></tr>`;
+        d.audio_results.forEach((a,i) => {
+          html += `<tr><td>Audio #${i+1}</td><td class="value" style="font-size:10px;">${a.hash||'—'} ${badgeBool(a.stable,'pass','warn')}</td></tr>`;
+        });
+      } else {
+        html += `<tr><td colspan="2"><span class="badge badge-info">等待检测</span></td></tr>`;
+      }
+      html += `</table>`;
+      return html;
+    },
+    clientData: true,
+  },
+  {
+    id: "dim-webgl",
+    title: "🎮 WebGL / WebGPU",
+    desc: "WebGL厂商与渲染器 · WebGPU支持 · 分辨率",
+    fields: ["webgl_vendor","webgl_renderer","webgpu"],
+    render: (d) => `
+      <table>
+        <tr><td>WebGL厂商</td><td class="value">${d.webgl_vendor||'—'}</td></tr>
+        <tr><td>WebGL渲染器</td><td class="value">${d.webgl_renderer||'—'}</td></tr>
+        <tr><td>WebGL版本</td><td class="value">${d.webgl_version||'—'}</td></tr>
+        <tr><td>WebGPU</td><td>${badgeBool(d.webgpu?.supported,'pass','info')}</td></tr>
+        ${d.webgpu?.vendor ? `<tr><td>WebGPU厂商</td><td class="value">${d.webgpu.vendor}</td></tr>` : ''}
+        ${d.webgpu?.renderer ? `<tr><td>WebGPU渲染器</td><td class="value">${d.webgpu.renderer}</td></tr>` : ''}
+      </table>
+    `,
+    clientData: true,
+  },
+  {
+    id: "dim-hardware",
+    title: "💻 硬件 & API 能力",
+    desc: "屏幕 · CPU核数 · 内存 · 23项Web API扫描",
+    fields: ["screen","cpu_cores","memory","api_scan"],
+    render: (d) => {
+      let html = `<table>`;
+      const s = d.screen || {};
+      html += `<tr><td>屏幕</td><td class="value">${s.width}×${s.height} @${s.colorDepth}bit ${s.devicePixelRatio?'('+s.devicePixelRatio+'x)':''}</td></tr>`;
+      html += `<tr><td>CPU逻辑核</td><td class="value">${d.cpu_cores||'—'}</td></tr>`;
+      html += `<tr><td>内存</td><td class="value">${d.memory ? '≈'+d.memory+'GB' : '—'}</td></tr>`;
+      if (d.api_scan) {
+        const sup = Object.entries(d.api_scan).filter(([,v]) => v).length;
+        const tot = Object.keys(d.api_scan).length;
+        html += `<tr><td>API可用</td><td class="value">${sup}/${tot}</td></tr>`;
+        html += `<tr><td colspan="2"><details><summary style="cursor:pointer;font-size:12px;color:var(--accent);">查看API详情</summary>`;
+        html += `<div style="font-size:11px;color:var(--muted);margin-top:4px;max-height:200px;overflow-y:auto;">`;
+        Object.entries(d.api_scan).forEach(([k,v]) => {
+          html += `<div>${v?'✅':'❌'} ${k}</div>`;
+        });
+        html += `</div></details></td></tr>`;
+      }
+      html += `</table>`;
+      return html;
+    },
+    clientData: true,
+  },
+  {
+    id: "dim-privacy",
+    title: "🔒 隐私模式",
+    desc: "Storage配额 · IndexedDB · Service Worker",
+    fields: ["storage_quota","indexed_db","service_worker"],
+    render: (d) => `
+      <table>
+        <tr><td>Storage配额</td><td class="value">${d.storage_quota ? d.storage_quota+'MB' : '<span class="badge badge-warn">0 (隐私模式?)</span>'}</td></tr>
+        <tr><td>IndexedDB</td><td>${badgeBool(d.indexed_db,'pass','fail')}</td></tr>
+        <tr><td>Service Worker</td><td>${badgeBool(d.service_worker,'pass','warn')}</td></tr>
+        ${!d.indexed_db || d.storage_quota === 0 ? '<tr><td colspan="2"><span class="badge badge-warn">⚠ 可能处于隐私/无痕模式</span></td></tr>' : ''}
+      </table>
+    `,
+    clientData: true,
+  },
+];
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+function badgeBool(val, trueStyle='pass', falseStyle='info') {
+  if (val === true || val === 'true') return `<span class="badge badge-${trueStyle}">是</span>`;
+  if (val === false || val === 'false') return `<span class="badge badge-${falseStyle}">否</span>`;
+  return `<span class="badge badge-info">${val}</span>`;
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>');
+}
+
+async function api(url, body) {
+  const opts = { headers: {'Accept':'application/json'} };
+  if (body) {
+    opts.method = 'POST';
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  try {
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch (e) {
+    return {error: e.message};
+  }
+}
+
+// ── Client-side data collection ─────────────────────────────────────
+
+function collectClientData() {
+  const data = {};
+
+  // Identity / Timezone / Language
+  data.platform = navigator.platform || '';
+  data.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  data.language = navigator.language || '';
+  data.languages = navigator.languages ? Array.from(navigator.languages) : [];
+  data.cookieEnabled = navigator.cookieEnabled;
+  data.sec_ch_ua = '';
+  // Get Sec-CH-UA from navigator if available
+  if (navigator.userAgentData) {
+    data.sec_ch_ua = JSON.stringify(navigator.userAgentData.brands || []);
+  }
+
+  // Fonts
+  const fonts = window.__fontResults || [];
+  data.fonts = fonts;
+  data.fontCount = fonts.length;
+  data.fontRegions = detectFontRegions(fonts);
+
+  // TTS Voices
+  const voices = window.__voiceResults || [];
+  data.voices = voices;
+  data.voiceCount = voices.length;
+
+  // Canvas
+  const canvasR = window.__canvasResults || [];
+  data.canvas_results = canvasR;
+
+  // Audio
+  const audioR = window.__audioResults || [];
+  data.audio_results = audioR;
+
+  // WebGL
+  const wg = window.__webglResults || {};
+  data.webgl_vendor = wg.vendor || '';
+  data.webgl_renderer = wg.renderer || '';
+  data.webgl_version = wg.version || '';
+
+  // WebGPU
+  const wgpu = window.__webgpuResults || {};
+  data.webgpu = wgpu;
+
+  // Screen / CPU / Memory
+  data.screen = {
+    width: screen.width,
+    height: screen.height,
+    colorDepth: screen.colorDepth,
+    devicePixelRatio: window.devicePixelRatio || 1,
+  };
+  data.cpu_cores = navigator.hardwareConcurrency || 0;
+  data.memory = navigator.deviceMemory || 0;
+
+  // Privacy
+  data.storage_quota = window.__storageQuota || 0;
+  data.indexed_db = window.__indexedDbAvailable !== false;
+  data.service_worker = 'serviceWorker' in navigator;
+
+  // API scan
+  data.api_scan = scanAPIs();
+
+  // WebRTC
+  const wr = window.__webrtcResults || {};
+  data.webrtc_ip = wr.ipv4 || '';
+
+  // Engine probe
+  const ep = window.__engineProbeResults || {};
+  data.engine = ep.engine || '';
+
+  // Multi-geo
+  data.multi_geo = window.__multiGeoResults || {};
+
+  return data;
+}
+
+function scanAPIs() {
+  const apis = {
+    'WebSocket': 'WebSocket' in window,
+    'WebRTC': 'RTCPeerConnection' in window || 'webkitRTCPeerConnection' in window,
+    'WebGL': (()=>{try{const c=document.createElement('canvas');return !!(c.getContext('webgl')||c.getContext('experimental-webgl'));}catch(e){return false;}})(),
+    'WebGL2': (()=>{try{const c=document.createElement('canvas');return !!c.getContext('webgl2');}catch(e){return false;}})(),
+    'WebGPU': 'GPU' in navigator,
+    'WebBluetooth': 'bluetooth' in navigator,
+    'WebUSB': 'usb' in navigator,
+    'WebSerial': 'serial' in navigator,
+    'WebNFC': 'nfc' in navigator,
+    'WebShare': 'share' in navigator,
+    'WebAssembly': 'WebAssembly' in window,
+    'WebAudio': 'AudioContext' in window || 'webkitAudioContext' in window,
+    'WebMIDI': 'requestMIDIAccess' in navigator,
+    'WebVR': 'getVRDisplays' in navigator,
+    'WebXR': 'xr' in navigator,
+    'WebWorker': 'Worker' in window,
+    'ServiceWorker': 'serviceWorker' in navigator,
+    'Geolocation': 'geolocation' in navigator,
+    'Notifications': 'Notification' in window,
+    'Credentials': 'credentials' in navigator,
+    'Clipboard': 'clipboard' in navigator,
+    'ScreenOrientation': 'screen' in window && 'orientation' in screen,
+    'StorageManager': 'storage' in navigator,
+  };
+  return apis;
+}
+
+function detectFontRegions(fonts) {
+  const cjk = ['SimSun','SimHei','MS Gothic','Yu Gothic','Malgun Gothic','Apple LiGothic','Noto Sans CJK','WenQuanYi'];
+  const arabic = ['Traditional Arabic','Simplified Arabic','Noto Naskh Arabic'];
+  const regions = [];
+  if (fonts.some(f => cjk.some(c => f.toLowerCase().includes(c.toLowerCase())))) regions.push('CJK');
+  if (fonts.some(f => arabic.some(a => f.toLowerCase().includes(a.toLowerCase())))) regions.push('Arabic');
+  return regions.join(', ') || 'generic';
+}
+
+// ── Client probes ───────────────────────────────────────────────────
+
+async function probeWebRTC() {
+  try {
+    const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)({iceServers:[]});
+    const results = {ipv4:null, local_ips:[], mdns:null, leak:false};
+
+    pc.createDataChannel('');
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    await new Promise(resolve => {
+      pc.onicecandidate = e => {
+        if (!e.candidate) return resolve();
+        const c = e.candidate.candidate;
+        // Extract IP from candidate string
+        const ipMatch = c.match(/(\d+\.\d+\.\d+\.\d+)/);
+        if (ipMatch) {
+          const ip = ipMatch[1];
+          if (ip.startsWith('192.') || ip.startsWith('10.') || ip.startsWith('172.')) {
+            if (!results.local_ips.includes(ip)) results.local_ips.push(ip);
+          } else if (ip !== '0.0.0.0') {
+            results.ipv4 = ip;
+          }
+        }
+        // mDNS hostname
+        const mdnsMatch = c.match(/([a-zA-Z0-9-]+\.local)/);
+        if (mdnsMatch) results.mdns = mdnsMatch[1];
+      };
+      setTimeout(resolve, 3000);
+    });
+    pc.close();
+
+    if (results.ipv4) results.leak = true;
+    window.__webrtcResults = results;
+    return results;
+  } catch(e) {
+    window.__webrtcResults = {error: e.message};
+    return {error: e.message};
+  }
+}
+
+async function probeWebGPU() {
+  if (!navigator.gpu) {
+    window.__webgpuResults = {supported: false};
+    return {supported: false};
+  }
+  try {
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) {
+      window.__webgpuResults = {supported: true, details: 'no adapter'};
+      return {supported: true};
+    }
+    const info = adapter.info || {};
+    const result = {
+      supported: true,
+      vendor: info.vendor || '',
+      renderer: info.architecture || '',
+      device: info.device || '',
+      description: info.description || '',
+    };
+    window.__webgpuResults = result;
+    return result;
+  } catch(e) {
+    window.__webgpuResults = {supported: true, error: e.message};
+    return {supported: true, error: e.message};
+  }
+}
+
+function probeCanvas() {
+  const results = [];
+  const tests = [
+    {text:'BrowserCheck 🖍', font:'18px Arial', w:256, h:256},
+    {text:'Hello 你好 こんにちは 🌍', font:'16px sans-serif', w:256, h:64},
+    {text:'Canvas Fingerprint Test #3', font:'bold 14px "Times New Roman"', w:256, h:64},
+    {text:'#4 with color', font:'12px monospace', w:128, h:128, color:true},
+    {text:'#5 with emoji 🚀🎨🔍', font:'20px Arial', w:200, h:72},
+  ];
+  tests.forEach((t, i) => {
+    try {
+      const c = document.createElement('canvas');
+      c.width = t.w;
+      c.height = t.h;
+      const ctx = c.getContext('2d');
+      if (!ctx) return;
+
+      // Draw slightly different content for each
+      ctx.textBaseline = 'top';
+      ctx.font = t.font;
+
+      if (t.color) {
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fillRect(0, 0, t.w, t.h);
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillText(t.text, 5, 5);
+        ctx.fillStyle = '#e94560';
+        ctx.fillText(t.text, 7, 27);
+        ctx.strokeStyle = '#0f3460';
+        ctx.strokeRect(10, 50, t.w-20, t.h-60);
+      } else {
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, t.w, t.h);
+        ctx.fillStyle = '#000';
+        ctx.fillText(t.text, 5, 5);
+        // Draw some geometric shapes for variety
+        ctx.strokeRect(10, 30, t.w-20, t.h-40);
+      }
+      // Get pixel hash
+      const imageData = ctx.getImageData(0, 0, t.w, t.h).data;
+      let hash = 0;
+      // Sample every 10th pixel for speed
+      for (let j = 0; j < imageData.length; j += 40) {
+        hash = ((hash << 5) - hash) + imageData[j];
+        hash |= 0;
+      }
+      results.push({index: i, hash: '0x' + (hash >>> 0).toString(16).padStart(8,'0'), stable: true});
+    } catch(e) {
+      results.push({index: i, error: e.message, stable: false});
+    }
+  });
+  window.__canvasResults = results;
+  return results;
+}
+
+function probeAudio() {
+  const results = [];
+  for (let i = 0; i < 3; i++) {
+    try {
+      const actx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = actx.createOscillator();
+      const gain = actx.createGain();
+      osc.connect(gain);
+      gain.connect(actx.destination);
+      osc.type = 'sawtooth';
+      osc.frequency.value = 440 + i * 100;
+
+      // Get frequency response (simplified)
+      const analyser = actx.createAnalyser();
+      osc.connect(analyser);
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      // Generate a short signal
+      const sampleRate = actx.sampleRate;
+      let hash = sampleRate;
+      // Use oscillator frequency as part of hash
+      hash = ((hash << 5) - hash) + Math.floor(osc.frequency.value);
+      hash |= 0;
+
+      results.push({
+        index: i,
+        sampleRate: sampleRate,
+        hash: '0x' + (hash >>> 0).toString(16).padStart(8,'0'),
+        stable: true,
+      });
+      actx.close();
+    } catch(e) {
+      results.push({index: i, error: e.message, stable: false});
+    }
+  }
+  window.__audioResults = results;
+  return results;
+}
+
+function probeEngineFeatures() {
+  // 1247-feature-like engine probe: detect actual rendering engine
+  // by testing multiple engine-specific features
+  const features = {};
+
+  // Blink/Chromium specific
+  features.chromeObj = !!window.chrome;
+  features.cssCrisp = CSS.supports('image-rendering','pixelated');
+  features.cssBackdrop = CSS.supports('backdrop-filter','blur(1px)');
+  features.canvasInertia = 'willReadFrequently' in (document.createElement('canvas').getContext('2d') || {});
+
+  // Gecko/Firefox specific
+  features.geckoBox = CSS.supports('-moz-box-sizing','border-box');
+  features.geckoAppearance = CSS.supports('-moz-appearance','none');
+  features.mozInnerX = 'mozInnerScreenX' in window;
+
+  // WebKit/Safari specific
+  features.webkitCSS = CSS.supports('-webkit-backdrop-filter','blur(1px)');
+  features.webkitLineClamp = CSS.supports('-webkit-line-clamp','2');
+  features.safariGesture = 'GestureEvent' in window;
+  features.applePay = 'ApplePaySession' in window;
+
+  // Determine engine by counting matches
+  const blinkScore = (features.chromeObj ? 3 : 0) + (features.cssCrisp ? 2 : 0) + (features.cssBackdrop ? 2 : 0);
+  const geckoScore = (features.geckoBox ? 3 : 0) + (features.geckoAppearance ? 3 : 0) + (features.mozInnerX ? 3 : 0);
+  const webkitScore = (features.webkitCSS ? 3 : 0) + (features.webkitLineClamp ? 3 : 0) + (features.safariGesture ? 3 : 0) + (features.applePay ? 3 : 0);
+
+  let engine = 'Unknown';
+  if (blinkScore >= geckoScore && blinkScore >= webkitScore && blinkScore > 0) engine = 'Blink';
+  else if (geckoScore > blinkScore && geckoScore >= webkitScore && geckoScore > 0) engine = 'Gecko';
+  else if (webkitScore > blinkScore && webkitScore > geckoScore && webkitScore > 0) engine = 'WebKit';
+
+  const matchedFeatures = Object.values(features).filter(Boolean).length;
+
+  window.__engineProbeResults = {
+    engine: engine,
+    features: features,
+    engineFeatures: matchedFeatures,
+    totalFeatures: Object.keys(features).length,
+  };
+  return window.__engineProbeResults;
+}
+
+async function probeStorageQuota() {
+  if (!navigator.storage || !navigator.storage.estimate) {
+    window.__storageQuota = 0;
+    return 0;
+  }
+  try {
+    const est = await navigator.storage.estimate();
+    const quota = est.quota || 0;
+    const mb = Math.round(quota / (1024 * 1024));
+    window.__storageQuota = mb;
+    return mb;
+  } catch(e) {
+    window.__storageQuota = 0;
+    return 0;
+  }
+}
+
+function probeFonts() {
+  // Detect installed fonts via font metrics (limited detection)
+  const testFonts = [
+    'Arial','Helvetica','Times New Roman','Courier New','Verdana','Georgia',
+    'SimSun','SimHei','Microsoft YaHei','Microsoft JhengHei','MS Gothic',
+    'Yu Gothic','Malgun Gothic','Apple LiGothic','Noto Sans CJK','WenQuanYi',
+    'Traditional Arabic','Simplified Arabic','Noto Naskh Arabic','DejaVu Sans',
+    'Liberation Sans','Droid Sans','Roboto','Open Sans','Noto Sans',
+    'Segoe UI','Tahoma','Trebuchet MS','Impact','Comic Sans MS',
+    'Monaco','Menlo','Consolas','Fira Code','Source Code Pro',
+    'Hiragino Sans','Hiragino Kaku Gothic Pro',
+  ];
+
+  const baseFonts = ['monospace','sans-serif','serif'];
+  const detected = [];
+
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d');
+  if (!ctx) { window.__fontResults = []; return []; }
+
+  const baseSize = 72;
+
+  function getTextWidth(font) {
+    ctx.font = baseSize + 'px ' + font;
+    return ctx.measureText('abcdefghijklmnopqrstuvwxyz').width;
+  }
+
+  // Measure reference widths for base fonts
+  const refWidths = {};
+  baseFonts.forEach(f => { refWidths[f] = getTextWidth(f); });
+
+  testFonts.forEach(font => {
+    const w = getTextWidth(font);
+    // If width differs from all base fonts, the font is installed
+    const matchesBase = baseFonts.some(bf => Math.abs(w - refWidths[bf]) < 2);
+    if (!matchesBase) {
+      detected.push(font);
+    }
+  });
+
+  window.__fontResults = detected;
+  return detected;
+}
+
+function probeVoices() {
+  return new Promise(resolve => {
+    const voices = speechSynthesis.getVoices();
+    if (voices.length) {
+      const names = Array.from(voices).map(v => v.name + ' (' + v.lang + ')');
+      window.__voiceResults = names;
+      resolve(names);
+    } else {
+      speechSynthesis.onvoiceschanged = () => {
+        const voices2 = speechSynthesis.getVoices();
+        const names2 = Array.from(voices2).map(v => v.name + ' (' + v.lang + ')');
+        window.__voiceResults = names2;
+        resolve(names2);
+      };
+      setTimeout(() => {
+        if (!window.__voiceResults) {
+          window.__voiceResults = [];
+          resolve([]);
+        }
+      }, 2000);
+    }
+  });
+}
+
+// ── Render Cards ────────────────────────────────────────────────────
+
+function renderCards() {
+  const grid = document.getElementById('dimensionGrid');
+  grid.innerHTML = '';
+  DIMENSIONS.forEach(dim => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.id = 'card-' + dim.id;
+    card.innerHTML = `
+      <div class="card-header">
+        <div class="card-title">${dim.title}</div>
+        <div class="card-status" id="status-${dim.id}"><span class="badge badge-info">等待检测</span></div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${dim.desc}</div>
+      <div class="card-body" id="body-${dim.id}">
+        <span style="color:var(--muted);font-size:13px;">点击"全面检测"开始…</span>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+
+  // Validation card
+  const valCard = document.createElement('div');
+  valCard.className = 'card';
+  valCard.id = 'card-dim-validation';
+  valCard.style.gridColumn = '1 / -1';
+  valCard.innerHTML = `
+    <div class="card-header">
+      <div class="card-title">🧪 交叉校验 (19条规则)</div>
+      <div class="card-status" id="status-dim-validation"><span class="badge badge-info">等待检测</span></div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">
+      IP国家↔时区/语言/字体/DNS/语音 · UA↔引擎/WebGL/Sec-CH-UA · IPv4↔IPv6 · WebRTC↔HTTP · 更多
+    </div>
+    <div class="card-body" id="body-dim-validation">
+      <span style="color:var(--muted);font-size:13px;">等待数据收集完成后显示…</span>
+    </div>
+  `;
+  grid.appendChild(valCard);
+}
+
+function updateCard(id, status, bodyHtml) {
+  const badge = document.getElementById('status-' + id);
+  const body = document.getElementById('body-' + id);
+  if (badge) {
+    badge.innerHTML = status === 'pass' ? '<span class="badge badge-pass">✓ 正常</span>' :
+      status === 'warn' ? '<span class="badge badge-warn">⚠ 异常</span>' :
+      status === 'fail' ? '<span class="badge badge-fail">✗ 失败</span>' :
+      '<span class="badge badge-info">✓ 完成</span>';
+  }
+  if (body) body.innerHTML = bodyHtml;
+}
+
+function updateEngineBadge(engine) {
+  const badge = document.getElementById('badgeEngine');
+  if (badge && engine) {
+    badge.textContent = '引擎: ' + engine;
+  }
+}
+
+// ── Main Run ────────────────────────────────────────────────────────
+
+async function runAll() {
+  const loading = document.getElementById('loadingIndicator');
+  const progress = document.getElementById('progressBar');
+  const fill = document.getElementById('progressFill');
+  loading.classList.add('active');
+  progress.classList.add('active');
+  fill.style.width = '0%';
+
+  let steps = 0;
+  const totalSteps = DIMENSIONS.length + 1; // +1 for validation
+
+  function stepComplete() {
+    steps++;
+    fill.style.width = Math.min(100, (steps / totalSteps) * 100) + '%';
+  }
+
+  try {
+    // 1. Run all client-side probes in parallel
+    const clientProbes = [
+      probeWebRTC(),
+      probeWebGPU(),
+      probeStorageQuota(),
+      probeVoices(),
+    ];
+    probeCanvas();
+    probeAudio();
+    probeEngineFeatures();
+    probeFonts();
+
+    await Promise.all(clientProbes);
+    const clientData = collectClientData();
+
+    // 2. Fetch server-side data for each dimension
+    for (const dim of DIMENSIONS) {
+      try {
+        if (dim.clientData) {
+          // Use client data
+          const data = {};
+          dim.fields.forEach(f => { data[f] = clientData[f]; });
+          const status = dim.fields.some(f => {
+            const v = data[f];
+            return v !== undefined && v !== null && v !== '' && v !== 0 && (!Array.isArray(v) || v.length > 0) && (typeof v !== 'object' || Object.keys(v).length > 0);
+          }) ? 'pass' : 'info';
+          updateCard(dim.id, status, dim.render(data));
+        } else {
+          const data = await dim.fetch();
+          updateCard(dim.id, 'pass', dim.render(data));
+        }
+      } catch(e) {
+        updateCard(dim.id, 'fail', `<span style="color:var(--danger);">错误: ${escHtml(e.message)}</span>`);
+      }
+      stepComplete();
+    }
+
+    // 3. Run validation (POST to server)
+    try {
+      const valData = await api("/api/validate", clientData);
+      renderValidation(valData);
+      updateCard('dim-validation', valData.overall === 'clean' ? 'pass' : valData.overall === 'attention_needed' ? 'warn' : 'fail',
+        renderValidationSummary(valData));
+      updateOverallBadge(valData);
+      if (valData?.score) {
+        document.getElementById('rulesSection').style.display = 'block';
+        renderRules(valData);
+      }
+    } catch(e) {
+      updateCard('dim-validation', 'fail', '校验引擎错误');
+    }
+    stepComplete();
+
+    // Update engine badge
+    if (window.__engineProbeResults) {
+      updateEngineBadge(window.__engineProbeResults.engine);
+    }
+
+  } catch(e) {
+    console.error('检测出错:', e);
+  } finally {
+    loading.classList.remove('active');
+    setTimeout(() => { progress.classList.remove('active'); }, 500);
+  }
+}
+
+function renderValidation(data) {
+  // no-op now, inline in card
+}
+
+function renderValidationSummary(data) {
+  if (!data || !data.score) return '<span style="color:var(--muted);">无数据</span>';
+  const s = data.score;
+  return `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+      <span>✅ 通过: ${s.pass||0}</span>
+      <span style="color:var(--warn);">⚠ 警告: ${s.warn||0}</span>
+      <span style="color:var(--danger);">✗ 失败: ${s.fail||0}</span>
+      <span style="color:var(--info);">ℹ 信息: ${s.error||0}</span>
+    </div>
+    <div style="margin-top:8px;font-size:12px;color:var(--muted);">综合判定: ${data.overall||'—'}</div>
+    ${data.findings && data.findings.length ? '<div style="margin-top:8px;font-size:12px;color:var(--danger);">发现: ' + data.findings.join('; ') + '</div>' : ''}
+  `;
+}
+
+function renderRules(data) {
+  const container = document.getElementById('rulesContainer');
+  container.innerHTML = '';
+  if (!data.rules) return;
+  data.rules.forEach(r => {
+    const el = document.createElement('div');
+    el.className = 'rule-item';
+    const statusCls = r.status === 'pass' ? 'badge-pass' : r.status === 'warn' ? 'badge-warn' : r.status === 'fail' ? 'badge-fail' : 'badge-info';
+    el.innerHTML = `
+      <div class="rule-id">${escHtml(r.id)}</div>
+      <div class="rule-detail">
+        <strong>${escHtml(r.name)}</strong>
+        <span class="status badge ${statusCls}">${escHtml(r.status)}</span>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;">${escHtml(r.detail)}</div>
+      </div>
+    `;
+    container.appendChild(el);
+  });
+
+  const findings = document.getElementById('findingsContainer');
+  findings.innerHTML = '';
+  if (data.findings && data.findings.length) {
+    data.findings.forEach(f => {
+      const el = document.createElement('div');
+      el.className = 'finding finding-fail';
+      el.textContent = '🔴 ' + f;
+      findings.appendChild(el);
+    });
+  }
+}
+
+function updateOverallBadge(data) {
+  const badge = document.getElementById('overallBadge');
+  if (!data || !data.overall) {
+    badge.innerHTML = '';
+    return;
+  }
+  const cls = data.overall === 'clean' ? 'score-clean' :
+    data.overall === 'attention_needed' ? 'score-attention' :
+    data.overall === 'suspicious' ? 'score-suspicious' : 'score-risky';
+  const label = data.overall === 'clean' ? '✅ 环境干净' :
+    data.overall === 'attention_needed' ? '⚠ 需关注' :
+    data.overall === 'suspicious' ? '🔴 可疑' : '🚨 高风险';
+  badge.innerHTML = `<span class="overall-score ${cls}">${label}</span>`;
+}
+
+// ── Init ────────────────────────────────────────────────────────────
+
+renderCards();
+// Auto-run on load
+setTimeout(runAll, 500);
+
+// Smooth scroll for dimension nav
+document.querySelectorAll('.dimension-nav a').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const id = a.getAttribute('href').slice(1);
+    const card = document.getElementById('card-' + id);
+    if (card) card.scrollIntoView({behavior:'smooth', block:'start'});
+    document.querySelectorAll('.dimension-nav a').forEach(x => x.classList.remove('active'));
+    a.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>
